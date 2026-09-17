@@ -1,0 +1,2 @@
+export function calculate(food,quantity){const factor=Number(quantity)/Number(food.reference_amount||100);return{calories:(Number(food.calories)||0)*factor,protein:(Number(food.protein)||0)*factor,carbs:(Number(food.carbs)||0)*factor,fat:(Number(food.fat)||0)*factor}}
+export function sumItems(items=[]){return items.reduce((total,item)=>{total.calories+=Number(item.calculated_calories)||0;total.protein+=Number(item.calculated_protein)||0;total.carbs+=Number(item.calculated_carbs)||0;total.fat+=Number(item.calculated_fat)||0;return total},{calories:0,protein:0,carbs:0,fat:0})}
