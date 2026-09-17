@@ -1,0 +1,137 @@
+name: Deploy FisEvo no GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Preparar aplicação
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Validar Secrets do Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::O Secret SUPABASE_URL não foi configurado."
+            exit 1
+          fi
+
+          if [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::O Secret SUPABASE_PUBLISHABLE_KEY não foi configurado."
+            exit 1
+          fi
+
+          case "$SUPABASE_URL" in
+            https://*.supabase.co)
+              echo "URL do Supabase validada."
+              ;;
+            *)
+              echo "::error::SUPABASE_URL não parece ser uma URL válida do Supabase."
+              exit 1
+              ;;
+          esac
+
+      - name: Preparar arquivos para publicação
+        run: |
+          mkdir -p dist
+          cp -R index.html login.html css js dist/
+
+          rm -f dist/js/config.example.js
+          rm -f dist/js/config.js
+
+      - name: Gerar configuração do Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          supabase_url = os.environ["SUPABASE_URL"]
+          publishable_key = os.environ["SUPABASE_PUBLISHABLE_KEY"]
+
+          content = (
+              "export const SUPABASE_URL = "
+              + json.dumps(supabase_url)
+              + ";\n"
+              + "export const SUPABASE_PUBLISHABLE_KEY = "
+              + json.dumps(publishable_key)
+              + ";\n"
+          )
+
+          Path("dist/js/config.js").write_text(
+              content,
+              encoding="utf-8"
+          )
+          PY
+
+      - name: Validar arquivos da aplicação
+        run: |
+          test -f dist/index.html
+          test -f dist/login.html
+          test -f dist/css/style.css
+          test -f dist/css/responsive.css
+          test -f dist/js/app.js
+          test -f dist/js/auth.js
+          test -f dist/js/config.js
+          test -f dist/js/supabase-config.js
+          test -f dist/js/data-service.js
+          test -f dist/js/taco-service.js
+
+          if grep -q "COLE_SUA" dist/js/config.js; then
+            echo "::error::O config.js ainda contém placeholders."
+            exit 1
+          fi
+
+          echo "Arquivos validados com sucesso."
+
+      - name: Desativar processamento do Jekyll
+        run: |
+          touch dist/.nojekyll
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Criar artefato do GitHub Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    name: Publicar aplicação
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
